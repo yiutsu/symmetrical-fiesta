@@ -137,12 +137,20 @@ export default function App() {
   const addNote = async () => {
     if (!text.trim() || loading) return;
     setLoading(true);
-    const { error } = await supabase
+
+    console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
+    console.log("Attempting insert with:", { text: text.trim(), author, drawn: false });
+
+    const { data, error } = await supabase
       .from("notes")
-      .insert([{ text: text.trim(), author, drawn: false }]);
+      .insert([{ text: text.trim(), author, drawn: false }])
+      .select();
+
+    console.log("Insert result:", { data, error });
 
     if (error) {
-      showFeedback("Something went wrong. Try again.");
+      showFeedback(`Error: ${error.message}`);
+      console.error("Full error:", error);
     } else {
       setText("");
       showFeedback("Idea dropped in the jar! 🎉");
