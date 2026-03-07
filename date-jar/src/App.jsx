@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-const STORAGE_KEY = "date-jar-notes";
-const DRAWN_KEY = "date-jar-drawn";
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
-// Pastel paper colors for notes
 const NOTE_COLORS = [
   "#FFD6D6", "#FFE8C8", "#FFF5C2", "#D6F5D6",
   "#D6EEFF", "#E8D6FF", "#FFD6F0", "#D6FFF5"
@@ -17,27 +19,25 @@ function hashColor(str) {
 
 function NoteCard({ note, isNew = false }) {
   const color = hashColor(note.id);
+  const tilt = ((note.id.charCodeAt(0) % 10) - 5) * 1.2;
   return (
     <div style={{
       background: color,
       borderRadius: "2px",
       padding: "18px 20px",
       boxShadow: "2px 3px 8px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.6)",
-      transform: `rotate(${note.tilt || 0}deg)`,
-      transition: "transform 0.2s",
+      transform: `rotate(${tilt}deg)`,
       fontFamily: "'Caveat', cursive",
       fontSize: "1.15rem",
       color: "#2a1a0e",
       lineHeight: 1.4,
       position: "relative",
       animation: isNew ? "popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)" : "none",
-      cursor: "default",
       minHeight: "80px",
       display: "flex",
       flexDirection: "column",
       justifyContent: "space-between",
     }}>
-      {/* Pin */}
       <div style={{
         position: "absolute", top: "-8px", left: "50%", transform: "translateX(-50%)",
         width: "12px", height: "12px", borderRadius: "50%",
@@ -53,82 +53,78 @@ function NoteCard({ note, isNew = false }) {
   );
 }
 
-function JarAnimation({ onDraw }) {
-  const [shaking, setShaking] = useState(false);
-
-  const handleClick = () => {
-    setShaking(true);
-    setTimeout(() => {
-      setShaking(false);
-      onDraw();
-    }, 600);
-  };
-
+function JarSVG({ shaking }) {
   return (
-    <button onClick={handleClick} style={{
-      background: "none", border: "none", cursor: "pointer",
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-      padding: "12px 24px",
-      animation: shaking ? "shake 0.5s ease" : "none",
-    }}>
-      <svg width="90" height="110" viewBox="0 0 90 110" fill="none">
-        {/* Jar body */}
+    <div style={{ animation: shaking ? "shake 0.5s ease" : "none" }}>
+      <svg width="100" height="120" viewBox="0 0 90 110" fill="none">
         <path d="M15 40 Q10 55 10 75 Q10 100 45 100 Q80 100 80 75 Q80 55 75 40 Z"
-          fill="rgba(200,230,255,0.4)" stroke="#7bb3d4" strokeWidth="2"/>
-        {/* Jar neck */}
+          fill="rgba(200,230,255,0.4)" stroke="#7bb3d4" strokeWidth="2" />
         <rect x="25" y="28" width="40" height="14" rx="4"
-          fill="rgba(200,230,255,0.4)" stroke="#7bb3d4" strokeWidth="2"/>
-        {/* Lid */}
+          fill="rgba(200,230,255,0.4)" stroke="#7bb3d4" strokeWidth="2" />
         <rect x="20" y="20" width="50" height="12" rx="5"
-          fill="#f4a261" stroke="#e07b39" strokeWidth="1.5"/>
-        {/* Notes peek */}
-        <rect x="30" y="52" width="12" height="10" rx="1" fill="#FFD6D6" transform="rotate(-8 36 57)"/>
-        <rect x="44" y="48" width="12" height="10" rx="1" fill="#D6EEFF" transform="rotate(4 50 53)"/>
-        <rect x="38" y="60" width="12" height="10" rx="1" fill="#FFF5C2" transform="rotate(-3 44 65)"/>
-        {/* Shine */}
-        <ellipse cx="30" cy="65" rx="5" ry="15" fill="rgba(255,255,255,0.2)" transform="rotate(-10 30 65)"/>
+          fill="#f4a261" stroke="#e07b39" strokeWidth="1.5" />
+        <rect x="30" y="52" width="12" height="10" rx="1" fill="#FFD6D6" transform="rotate(-8 36 57)" />
+        <rect x="44" y="48" width="12" height="10" rx="1" fill="#D6EEFF" transform="rotate(4 50 53)" />
+        <rect x="38" y="60" width="12" height="10" rx="1" fill="#FFF5C2" transform="rotate(-3 44 65)" />
+        <ellipse cx="30" cy="65" rx="5" ry="15" fill="rgba(255,255,255,0.2)" transform="rotate(-10 30 65)" />
       </svg>
-      <span style={{
-        fontFamily: "'Caveat', cursive", fontSize: "1.1rem",
-        color: "#e07b39", fontWeight: 600,
-        textShadow: "0 1px 2px rgba(0,0,0,0.1)"
-      }}>Shake the jar!</span>
-    </button>
+    </div>
   );
 }
 
 export default function App() {
   const [notes, setNotes] = useState([]);
-  const [drawn, setDrawn] = useState([]);
+  const [drawnNotes, setDrawnNotes] = useState([]);
   const [author, setAuthor] = useState(() => localStorage.getItem("date-jar-user") || "");
   const [text, setText] = useState("");
   const [drawnNote, setDrawnNote] = useState(null);
-  const [view, setView] = useState("jar"); // "jar" | "add" | "drawn"
+  const [view, setView] = useState("jar");
   const [nameInput, setNameInput] = useState("");
   const [loggedIn, setLoggedIn] = useState(() => !!localStorage.getItem("date-jar-user"));
   const [feedback, setFeedback] = useState("");
-  const [newNoteId, setNewNoteId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [shaking, setShaking] = useState(false);
   const textRef = useRef(null);
 
-  // Load from shared storage on mount and poll
-  const loadNotes = async () => {
-    try {
-      const r = await window.storage.get(STORAGE_KEY, true);
-      if (r) setNotes(JSON.parse(r.value));
-    } catch {}
-    try {
-      const r = await window.storage.get(DRAWN_KEY, true);
-      if (r) setDrawn(JSON.parse(r.value));
-    } catch {}
+  const showFeedback = (msg) => {
+    setFeedback(msg);
+    setTimeout(() => setFeedback(""), 3000);
   };
 
-  useEffect(() => { loadNotes(); }, []);
+  const loadNotes = async () => {
+    const { data } = await supabase
+      .from("notes")
+      .select("*")
+      .eq("drawn", false)
+      .order("created_at", { ascending: true });
+    if (data) setNotes(data);
+  };
 
-  // Poll every 10s for new notes from other users
+  const loadDrawnNotes = async () => {
+    const { data } = await supabase
+      .from("notes")
+      .select("*")
+      .eq("drawn", true)
+      .order("drawn_at", { ascending: false });
+    if (data) setDrawnNotes(data);
+  };
+
   useEffect(() => {
-    const interval = setInterval(loadNotes, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    if (!loggedIn) return;
+    loadNotes();
+    loadDrawnNotes();
+
+    // Real-time updates — any change in the notes table refreshes both lists
+    const channel = supabase
+      .channel("notes-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, () => {
+        loadNotes();
+        loadDrawnNotes();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [loggedIn]);
 
   const login = () => {
     if (!nameInput.trim()) return;
@@ -139,50 +135,55 @@ export default function App() {
   };
 
   const addNote = async () => {
-    if (!text.trim()) return;
-    const note = {
-      id: Date.now() + Math.random().toString(36).slice(2),
-      text: text.trim(),
-      author,
-      tilt: (Math.random() - 0.5) * 8,
-      createdAt: Date.now()
-    };
-    const updated = [...notes, note];
-    setNotes(updated);
-    setNewNoteId(note.id);
-    await window.storage.set(STORAGE_KEY, JSON.stringify(updated), true);
-    setText("");
-    setFeedback("Note added to the jar! 🎉");
-    setTimeout(() => setFeedback(""), 2500);
-    setTimeout(() => setNewNoteId(null), 1000);
+    if (!text.trim() || loading) return;
+    setLoading(true);
+    const { error } = await supabase
+      .from("notes")
+      .insert([{ text: text.trim(), author, drawn: false }]);
+
+    if (error) {
+      showFeedback("Something went wrong. Try again.");
+    } else {
+      setText("");
+      showFeedback("Idea dropped in the jar! 🎉");
+    }
+    setLoading(false);
   };
 
   const drawNote = async () => {
     if (notes.length === 0) {
-      setFeedback("The jar is empty! Add some ideas first.");
-      setTimeout(() => setFeedback(""), 3000);
+      showFeedback("The jar is empty! Add some ideas first.");
       return;
     }
-    const idx = Math.floor(Math.random() * notes.length);
-    const picked = notes[idx];
-    const remaining = notes.filter((_, i) => i !== idx);
-    const newDrawn = [...drawn, { ...picked, drawnAt: Date.now(), drawnBy: author }];
-    setNotes(remaining);
-    setDrawn(newDrawn);
+
+    setShaking(true);
+    await new Promise(r => setTimeout(r, 600));
+    setShaking(false);
+
+    // Pick a random note from the current pool
+    const randomIndex = Math.floor(Math.random() * notes.length);
+    const picked = notes[randomIndex];
+
+    const { error } = await supabase
+      .from("notes")
+      .update({ drawn: true, drawn_by: author, drawn_at: new Date().toISOString() })
+      .eq("id", picked.id);
+
+    if (error) {
+      showFeedback("Something went wrong. Try again.");
+      return;
+    }
+
     setDrawnNote(picked);
     setView("drawn");
-    await window.storage.set(STORAGE_KEY, JSON.stringify(remaining), true);
-    await window.storage.set(DRAWN_KEY, JSON.stringify(newDrawn), true);
   };
 
   const returnNote = async () => {
     if (!drawnNote) return;
-    const updated = [...notes, drawnNote];
-    setNotes(updated);
-    const newDrawn = drawn.filter(d => d.id !== drawnNote.id);
-    setDrawn(newDrawn);
-    await window.storage.set(STORAGE_KEY, JSON.stringify(updated), true);
-    await window.storage.set(DRAWN_KEY, JSON.stringify(newDrawn), true);
+    await supabase
+      .from("notes")
+      .update({ drawn: false, drawn_by: null, drawn_at: null })
+      .eq("id", drawnNote.id);
     setDrawnNote(null);
     setView("jar");
   };
@@ -190,8 +191,7 @@ export default function App() {
   const keepNote = () => {
     setDrawnNote(null);
     setView("jar");
-    setFeedback("Enjoy your date! 💕");
-    setTimeout(() => setFeedback(""), 3000);
+    showFeedback("Enjoy your date! 💕");
   };
 
   if (!loggedIn) {
@@ -200,7 +200,7 @@ export default function App() {
         <style>{globalStyles}</style>
         <div style={styles.page}>
           <div style={styles.loginCard}>
-            <div style={styles.heartDecor}>💌</div>
+            <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>💌</div>
             <h1 style={styles.title}>Date Jar</h1>
             <p style={styles.subtitle}>A shared jar of date ideas for two</p>
             <div style={styles.inputGroup}>
@@ -224,7 +224,6 @@ export default function App() {
     <>
       <style>{globalStyles}</style>
       <div style={styles.page}>
-        {/* Header */}
         <header style={styles.header}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: "1.5rem" }}>💌</span>
@@ -236,18 +235,22 @@ export default function App() {
           </div>
         </header>
 
-        {/* Feedback toast */}
-        {feedback && (
-          <div style={styles.toast}>{feedback}</div>
-        )}
+        {feedback && <div style={styles.toast}>{feedback}</div>}
 
-        {/* Main content */}
         {view === "jar" && (
           <div style={styles.main}>
             <div style={styles.jarSection}>
-              <JarAnimation onDraw={drawNote} />
-              <p style={{ color: "#999", fontSize: "0.85rem", fontFamily: "'Inter', sans-serif", margin: "4px 0 0" }}>
-                {notes.length === 0 ? "Add some ideas first!" : "Draw a random date idea"}
+              <button
+                onClick={drawNote}
+                style={{ background: "none", border: "none", cursor: notes.length > 0 ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+              >
+                <JarSVG shaking={shaking} />
+                <span style={{ fontFamily: "'Caveat', cursive", fontSize: "1.1rem", color: "#e07b39", fontWeight: 600 }}>
+                  {notes.length > 0 ? "Shake the jar!" : "Jar is empty"}
+                </span>
+              </button>
+              <p style={{ color: "#bbb", fontSize: "0.82rem", fontFamily: "'Inter', sans-serif", marginTop: 4 }}>
+                {notes.length > 0 ? "Draw a random date idea" : "Add some ideas below!"}
               </p>
             </div>
 
@@ -255,9 +258,9 @@ export default function App() {
               <button style={styles.tabBtn} onClick={() => { setView("add"); setTimeout(() => textRef.current?.focus(), 100); }}>
                 + Add an idea
               </button>
-              {drawn.length > 0 && (
+              {drawnNotes.length > 0 && (
                 <button style={{ ...styles.tabBtn, ...styles.tabBtnSecondary }} onClick={() => setView("history")}>
-                  Past draws ({drawn.length})
+                  Past draws ({drawnNotes.length})
                 </button>
               )}
             </div>
@@ -277,14 +280,11 @@ export default function App() {
                 rows={4}
               />
               <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                <button style={styles.primaryBtn} onClick={addNote} disabled={!text.trim()}>
-                  Drop it in 🫙
+                <button style={styles.primaryBtn} onClick={addNote} disabled={!text.trim() || loading}>
+                  {loading ? "Adding..." : "Drop it in 🫙"}
                 </button>
-                <button style={styles.ghostBtn} onClick={() => setView("jar")}>
-                  Back
-                </button>
+                <button style={styles.ghostBtn} onClick={() => setView("jar")}>Back</button>
               </div>
-              {feedback && <p style={{ color: "#e07b39", fontFamily: "'Caveat', cursive", fontSize: "1.1rem", marginTop: 8 }}>{feedback}</p>}
             </div>
           </div>
         )}
@@ -308,17 +308,17 @@ export default function App() {
 
         {view === "history" && (
           <div style={styles.main}>
-            <div style={styles.historySection}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h2 style={styles.cardTitle}>Past date ideas 📖</h2>
                 <button style={styles.ghostBtn} onClick={() => setView("jar")}>← Back</button>
               </div>
               <div style={styles.notesGrid}>
-                {[...drawn].reverse().map(note => (
+                {drawnNotes.map(note => (
                   <div key={note.id}>
                     <NoteCard note={note} />
-                    <p style={{ fontSize: "0.7rem", color: "#aaa", fontFamily: "'Inter', sans-serif", textAlign: "center", marginTop: 4 }}>
-                      Drawn by {note.drawnBy} · {new Date(note.drawnAt).toLocaleDateString()}
+                    <p style={{ fontSize: "0.7rem", color: "#aaa", fontFamily: "'Inter', sans-serif", textAlign: "center", marginTop: 6 }}>
+                      Drawn by {note.drawn_by} · {new Date(note.drawn_at).toLocaleDateString()}
                     </p>
                   </div>
                 ))}
@@ -333,15 +333,13 @@ export default function App() {
 
 const globalStyles = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500&display=swap');
-
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #fdf6ee; }
 
   @keyframes popIn {
-    0% { transform: scale(0.5) rotate(var(--tilt, 0deg)); opacity: 0; }
-    100% { transform: scale(1) rotate(var(--tilt, 0deg)); opacity: 1; }
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
   }
-
   @keyframes shake {
     0%,100% { transform: translateX(0) rotate(0); }
     15% { transform: translateX(-8px) rotate(-5deg); }
@@ -351,17 +349,14 @@ const globalStyles = `
     75% { transform: translateX(-3px) rotate(-1deg); }
     90% { transform: translateX(3px) rotate(1deg); }
   }
-
   @keyframes slideDown {
     from { transform: translateY(-20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
-
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
-
   textarea:focus, input:focus { outline: none; }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
 `;
@@ -390,170 +385,54 @@ const styles = {
     width: "90%",
     animation: "fadeIn 0.5s ease",
   },
-  heartDecor: { fontSize: "2.5rem", marginBottom: 12 },
-  title: {
-    fontFamily: "'Lora', serif",
-    fontSize: "2.2rem",
-    color: "#2a1a0e",
-    fontWeight: 600,
-    marginBottom: 6,
-  },
-  subtitle: {
-    color: "#999",
-    fontSize: "0.95rem",
-    marginBottom: 28,
-    fontStyle: "italic",
-  },
+  title: { fontFamily: "'Lora', serif", fontSize: "2.2rem", color: "#2a1a0e", fontWeight: 600, marginBottom: 6 },
+  subtitle: { color: "#999", fontSize: "0.95rem", marginBottom: 28, fontStyle: "italic" },
   inputGroup: { display: "flex", gap: 10 },
   input: {
-    flex: 1,
-    padding: "10px 14px",
-    border: "1.5px solid #e8d5c4",
-    borderRadius: 10,
-    fontSize: "1rem",
-    fontFamily: "'Inter', sans-serif",
-    background: "#fdf6ee",
-    color: "#2a1a0e",
-    transition: "border-color 0.2s",
+    flex: 1, padding: "10px 14px", border: "1.5px solid #e8d5c4", borderRadius: 10,
+    fontSize: "1rem", fontFamily: "'Inter', sans-serif", background: "#fdf6ee", color: "#2a1a0e",
   },
   textarea: {
-    width: "100%",
-    padding: "12px 14px",
-    border: "1.5px solid #e8d5c4",
-    borderRadius: 10,
-    fontSize: "1rem",
-    fontFamily: "'Caveat', cursive",
-    fontSize: "1.15rem",
-    background: "#fdf6ee",
-    color: "#2a1a0e",
-    resize: "vertical",
-    lineHeight: 1.5,
+    width: "100%", padding: "12px 14px", border: "1.5px solid #e8d5c4", borderRadius: 10,
+    fontSize: "1.15rem", fontFamily: "'Caveat', cursive", background: "#fdf6ee",
+    color: "#2a1a0e", resize: "vertical", lineHeight: 1.5,
   },
   primaryBtn: {
-    padding: "10px 20px",
-    background: "#e07b39",
-    color: "white",
-    border: "none",
-    borderRadius: 10,
-    fontSize: "0.95rem",
-    fontFamily: "'Inter', sans-serif",
-    fontWeight: 500,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    transition: "background 0.2s, transform 0.1s",
+    padding: "10px 20px", background: "#e07b39", color: "white", border: "none",
+    borderRadius: 10, fontSize: "0.95rem", fontFamily: "'Inter', sans-serif",
+    fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
   },
   ghostBtn: {
-    padding: "10px 16px",
-    background: "transparent",
-    color: "#999",
-    border: "1.5px solid #e8d5c4",
-    borderRadius: 10,
-    fontSize: "0.9rem",
-    fontFamily: "'Inter', sans-serif",
-    cursor: "pointer",
-    transition: "border-color 0.2s",
+    padding: "10px 16px", background: "transparent", color: "#999",
+    border: "1.5px solid #e8d5c4", borderRadius: 10, fontSize: "0.9rem",
+    fontFamily: "'Inter', sans-serif", cursor: "pointer",
   },
   header: {
-    width: "100%",
-    maxWidth: 600,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "20px 24px",
-    borderBottom: "1px solid rgba(0,0,0,0.06)",
+    width: "100%", maxWidth: 600, display: "flex", justifyContent: "space-between",
+    alignItems: "center", padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.06)",
   },
-  headerTitle: {
-    fontFamily: "'Lora', serif",
-    fontSize: "1.4rem",
-    color: "#2a1a0e",
-    fontWeight: 600,
-  },
-  userBadge: {
-    fontFamily: "'Caveat', cursive",
-    fontSize: "1.05rem",
-    color: "#e07b39",
-  },
+  headerTitle: { fontFamily: "'Lora', serif", fontSize: "1.4rem", color: "#2a1a0e", fontWeight: 600 },
+  userBadge: { fontFamily: "'Caveat', cursive", fontSize: "1.05rem", color: "#e07b39" },
   countBadge: {
-    background: "#fde8d5",
-    color: "#e07b39",
-    padding: "3px 10px",
-    borderRadius: 20,
-    fontSize: "0.8rem",
-    fontFamily: "'Inter', sans-serif",
-    fontWeight: 500,
+    background: "#fde8d5", color: "#e07b39", padding: "3px 10px",
+    borderRadius: 20, fontSize: "0.8rem", fontFamily: "'Inter', sans-serif", fontWeight: 500,
   },
   toast: {
-    position: "fixed",
-    top: 70,
-    background: "#2a1a0e",
-    color: "white",
-    padding: "10px 20px",
-    borderRadius: 30,
-    fontSize: "0.9rem",
-    fontFamily: "'Inter', sans-serif",
-    zIndex: 100,
-    animation: "slideDown 0.3s ease",
+    position: "fixed", top: 70, background: "#2a1a0e", color: "white",
+    padding: "10px 20px", borderRadius: 30, fontSize: "0.9rem",
+    fontFamily: "'Inter', sans-serif", zIndex: 100, animation: "slideDown 0.3s ease",
     boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
   },
-  main: {
-    width: "100%",
-    maxWidth: 600,
-    padding: "32px 24px",
-    flex: 1,
-    animation: "fadeIn 0.3s ease",
-  },
-  jarSection: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    padding: "24px 0",
-  },
-  tabs: {
-    display: "flex",
-    gap: 12,
-    justifyContent: "center",
-    marginTop: 24,
-  },
+  main: { width: "100%", maxWidth: 600, padding: "32px 24px", flex: 1, animation: "fadeIn 0.3s ease" },
+  jarSection: { display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 0" },
+  tabs: { display: "flex", gap: 12, justifyContent: "center", marginTop: 24 },
   tabBtn: {
-    padding: "12px 24px",
-    background: "#e07b39",
-    color: "white",
-    border: "none",
-    borderRadius: 12,
-    fontSize: "0.95rem",
-    fontFamily: "'Inter', sans-serif",
-    fontWeight: 500,
-    cursor: "pointer",
+    padding: "12px 24px", background: "#e07b39", color: "white", border: "none",
+    borderRadius: 12, fontSize: "0.95rem", fontFamily: "'Inter', sans-serif", fontWeight: 500, cursor: "pointer",
   },
-  tabBtnSecondary: {
-    background: "white",
-    color: "#666",
-    border: "1.5px solid #e8d5c4",
-  },
-  addCard: {
-    background: "white",
-    borderRadius: 16,
-    padding: "28px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
-  },
-  cardTitle: {
-    fontFamily: "'Lora', serif",
-    fontSize: "1.3rem",
-    color: "#2a1a0e",
-    marginBottom: 16,
-  },
-  drawnSection: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    paddingTop: 20,
-  },
-  notesGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-    gap: 20,
-  },
-  historySection: {
-    animation: "fadeIn 0.3s ease",
-  },
+  tabBtnSecondary: { background: "white", color: "#666", border: "1.5px solid #e8d5c4" },
+  addCard: { background: "white", borderRadius: 16, padding: "28px", boxShadow: "0 4px 24px rgba(0,0,0,0.06)" },
+  cardTitle: { fontFamily: "'Lora', serif", fontSize: "1.3rem", color: "#2a1a0e", marginBottom: 16 },
+  drawnSection: { display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 20 },
+  notesGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 20 },
 };
