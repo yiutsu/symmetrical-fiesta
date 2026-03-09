@@ -115,8 +115,8 @@ function Toast({ message }) {
 function WelcomeScreen({ onEnter }) {
   const [name, setName] = useState("");
   return (
-    <div style={s.centeredPage}>
-      <div style={s.card}>
+    <div style={s.centeredPage} className="centered-page">
+      <div style={s.card} className="dj-card">
         <div style={{ fontSize: "2.8rem", marginBottom: 10 }}>💌</div>
         <h1 style={s.displayTitle}>Date Jar</h1>
         <p style={s.muted}>A private jar of date ideas, shared between two</p>
@@ -168,8 +168,8 @@ function JarLobby({ author, onJarReady }) {
   };
 
   return (
-    <div style={s.centeredPage}>
-      <div style={s.card}>
+    <div style={s.centeredPage} className="centered-page">
+      <div style={s.card} className="dj-card">
         <div style={{ fontSize: "2rem", marginBottom: 8 }}>🫙</div>
         <h2 style={s.cardTitle}>Welcome, {author}</h2>
         <p style={s.muted}>Create a new jar or join one with a code</p>
@@ -320,7 +320,7 @@ function MainApp({ author, jar, onLeave }) {
       </header>
 
       {/* Views */}
-      <div style={s.main}>
+      <div style={s.main} className="main-area">
 
         {view === "jar" && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
@@ -346,7 +346,7 @@ function MainApp({ author, jar, onLeave }) {
         )}
 
         {view === "add" && (
-          <div style={s.card}>
+          <div style={s.card} className="dj-card">
             <h2 style={s.cardTitle}>Drop an idea in 💡</h2>
             <textarea
               ref={textRef}
@@ -499,6 +499,7 @@ const s = {
     boxShadow: "0 6px 32px rgba(0,0,0,0.07)",
     maxWidth: 400,
     width: "100%",
+    boxSizing: "border-box",
     animation: "fadeIn 0.4s ease",
     textAlign: "center",
   },
@@ -639,4 +640,37 @@ const globalStyles = `
   input:focus, textarea:focus { outline: none; border-color: var(--accent) !important; }
   button:disabled { opacity: 0.38; cursor: not-allowed; }
   button:not(:disabled):hover { opacity: 0.88; }
+
+  /* ── Responsive ─────────────────────────────────────── */
+
+  /* Tablet (≤768px): slightly tighter, still centred */
+  @media (max-width: 768px) {
+    .centered-page {
+      padding: 20px 16px !important;
+    }
+    .dj-card {
+      padding: 24px 20px !important;
+      border-radius: 14px;
+    }
+    .main-area {
+      padding: 24px 16px !important;
+    }
+  }
+
+  /* Phone (≤480px): fill screen width, compact spacing */
+  @media (max-width: 480px) {
+    .centered-page {
+      padding: 16px 12px !important;
+      align-items: stretch !important;
+    }
+    .dj-card {
+      max-width: 100% !important;
+      padding: 22px 16px !important;
+      border-radius: 12px;
+      box-shadow: 0 3px 16px rgba(0,0,0,0.08);
+    }
+    .main-area {
+      padding: 16px 12px !important;
+    }
+  }
 `;
