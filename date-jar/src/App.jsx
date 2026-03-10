@@ -110,6 +110,146 @@ function Toast({ message }) {
   );
 }
 
+function PlanningMoment({ note, author, onDone }) {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const defaultDate = tomorrow.toISOString().split("T")[0];
+
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState("19:00");
+  const [myEmail, setMyEmail] = useState(() => getStorage("dj-my-email") || "");
+  const [partnerEmail, setPartnerEmail] = useState(() => getStorage("dj-partner-email") || "");
+  const [showEmails, setShowEmails] = useState(!!(getStorage("dj-my-email") || getStorage("dj-partner-email")));
+
+  const saveEmails = () => {
+    setStorage("dj-my-email", myEmail);
+    setStorage("dj-partner-email", partnerEmail);
+  };
+
+  const fmtCal = (d, t) => d.replace(/-/g, "") + "T" + t.replace(":", "") + "00";
+
+  const addTwoHours = (t) => {
+    const [h, m] = t.split(":").map(Number);
+    return `${String(Math.min(h + 2, 23)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+
+  const openGoogleCal = () => {
+    saveEmails();
+    const start = fmtCal(date, time);
+    const end = fmtCal(date, addTwoHours(time));
+    const params = new URLSearchParams({
+      action: "TEMPLATE",
+      text: `📅 ${note.text}`,
+      dates: `${start}/${end}`,
+      details: "From our Date Jar 💌",
+    });
+    if (myEmail) params.append("add", myEmail);
+    if (partnerEmail) params.append("add", partnerEmail);
+    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, "_blank");
+    onDone();
+  };
+
+  const openAppleCal = () => {
+    saveEmails();
+    const start = fmtCal(date, time);
+    const end = fmtCal(date, addTwoHours(time));
+    const attendees = [
+      myEmail ? `ATTENDEE;CN="${author}":mailto:${myEmail}` : "",
+      partnerEmail ? `ATTENDEE;CN="Partner":mailto:${partnerEmail}` : "",
+    ].filter(Boolean).join("\r\n");
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Date Jar//EN",
+      "CALSCALE:GREGORIAN",
+      "METHOD:REQUEST",
+      "BEGIN:VEVENT",
+      `DTSTART:${start}`,
+      `DTEND:${end}`,
+      `SUMMARY:\uD83D\uDCC5 ${note.text}`,
+      `DESCRIPTION:From our Date Jar \uD83D\uDC8C`,
+      attendees,
+      `UID:${note.id}-${Date.now()}@datejar`,
+      "STATUS:CONFIRMED",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].filter(Boolean).join("\r\n");
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "date.ics"; a.click();
+    URL.revokeObjectURL(url);
+    onDone();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, paddingTop: 12, animation: "fadeIn 0.3s ease" }}>
+      <p style={s.drawnLabel}>🗓 Let's plan it!</p>
+
+      {/* Note preview */}
+      <div style={{
+        background: hashColor(note.id), borderRadius: 10,
+        padding: "14px 20px", maxWidth: 320, width: "100%",
+        fontFamily: "'Caveat', cursive", fontSize: "1.15rem",
+        color: "#2a1a0e", lineHeight: 1.4,
+        boxShadow: "2px 3px 10px rgba(0,0,0,0.1)",
+      }}>
+        {note.text}
+      </div>
+
+      {/* Date + Time */}
+      <div style={{ display: "flex", gap: 12, width: "100%", maxWidth: 320 }}>
+        <div style={{ flex: 1 }}>
+          <label style={s.planLabel}>Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            style={{ ...s.input, width: "100%" }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={s.planLabel}>Time</label>
+          <input type="time" value={time} onChange={e => setTime(e.target.value)}
+            style={{ ...s.input, width: "100%" }} />
+        </div>
+      </div>
+
+      {/* Email fields */}
+      <div style={{ width: "100%", maxWidth: 320 }}>
+        {!showEmails ? (
+          <button style={{ ...s.btnGhost, width: "100%", fontSize: "0.82rem" }}
+            onClick={() => setShowEmails(true)}>
+            + Add emails to invite both of you
+          </button>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input style={{ ...s.input, width: "100%" }} type="email"
+              placeholder="Your email (optional)"
+              value={myEmail} onChange={e => setMyEmail(e.target.value)} />
+            <input style={{ ...s.input, width: "100%" }} type="email"
+              placeholder="Partner's email (optional)"
+              value={partnerEmail} onChange={e => setPartnerEmail(e.target.value)} />
+          </div>
+        )}
+      </div>
+
+      {/* Calendar buttons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 320 }}>
+        <button onClick={openGoogleCal}
+          style={{ ...s.btn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <span>🗓</span> Add to Google Calendar
+        </button>
+        <button onClick={openAppleCal}
+          style={{ ...s.btn, width: "100%", background: "#1c1c1e", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <span>🍎</span> Add to Apple Calendar
+        </button>
+      </div>
+
+      <button onClick={onDone}
+        style={{ background: "none", border: "none", cursor: "pointer", color: "#bbb", fontSize: "0.82rem", fontFamily: "'DM Sans', sans-serif", padding: "4px 0" }}>
+        Skip, we'll figure it out →
+      </button>
+    </div>
+  );
+}
+
 // ─── Screens ─────────────────────────────────────────────────────────────────
 
 function WelcomeScreen({ onEnter }) {
@@ -295,7 +435,8 @@ function MainApp({ author, jar, onLeave }) {
     setDrawnNote(null); setView("jar");
   };
 
-  const keepNote = () => { setDrawnNote(null); setView("jar"); toast("Enjoy your date! 💕"); };
+  const keepNote = () => { setView("plan"); };
+  const finishPlanning = () => { setDrawnNote(null); setView("jar"); toast("Enjoy your date! 💕"); };
 
   return (
     <div style={s.appShell}>
@@ -395,6 +536,10 @@ function MainApp({ author, jar, onLeave }) {
               ))}
             </div>
           </div>
+        )}
+
+        {view === "plan" && drawnNote && (
+          <PlanningMoment note={drawnNote} author={author} onDone={finishPlanning} />
         )}
 
       </div>
@@ -594,6 +739,15 @@ const s = {
     fontSize: "0.7rem", color: "#bbb",
     fontFamily: "'DM Sans', sans-serif",
     textAlign: "center", marginTop: 6,
+  },
+  planLabel: {
+    display: "block",
+    fontSize: "0.7rem",
+    color: "#aaa",
+    fontFamily: "'DM Sans', sans-serif",
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
   },
   grid: {
     display: "grid",
