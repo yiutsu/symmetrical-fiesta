@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { GoogleGenAI } from "@google/genai";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+
+const ai = import.meta.env.VITE_GEMINI_API_KEY
+  ? new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY })
+  : null;
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -374,6 +379,7 @@ function MainApp({ author, jar, onLeave }) {
   const [drawnNote, setDrawnNote] = useState(null);
   const [view, setView] = useState("jar"); // jar | add | drawn | history
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [shaking, setShaking] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [showCode, setShowCode] = useState(false);
@@ -427,6 +433,41 @@ function MainApp({ author, jar, onLeave }) {
     if (error) { toast("Something went wrong. Try again."); return; }
     setDrawnNote(picked);
     setView("drawn");
+  };
+
+  const generateIdea = async () => {
+    if (!ai) {
+      toast("AI generation is not configured. Please add VITE_GEMINI_API_KEY.");
+      return;
+    }
+    setGenerating(true);
+    toast("Asking AI for an idea...");
+    try {
+      const existingIdeas = notes.map(n => n.text).join("\n- ");
+      const prompt = `You are a creative assistant helping a couple come up with a new date idea.
+They have a "Date Jar" with these existing ideas:
+- ${existingIdeas || "No ideas yet!"}
+
+Based on the vibe of these ideas (or if none exist, just come up with something cute, romantic, and fun), suggest ONE new date idea.
+Keep it concise, romantic, and written as a single sentence or short paragraph. Do not use quotes or introductory text, just output the idea itself.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      if (response && response.text) {
+        setText(response.text);
+        toast("Idea generated! ✨");
+      } else {
+        toast("Failed to generate idea. Try again.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast("Error generating idea.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const returnNote = async () => {
@@ -489,17 +530,48 @@ function MainApp({ author, jar, onLeave }) {
         {view === "add" && (
           <div style={s.card} className="dj-card">
             <h2 style={s.cardTitle}>Drop an idea in 💡</h2>
-            <textarea
-              ref={textRef}
-              style={s.textarea}
-              placeholder="e.g. Sunset picnic with homemade sandwiches…"
-              value={text}
-              onChange={e => setText(e.target.value)}
-              rows={4}
-            />
-            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button style={s.btn} onClick={addNote} disabled={!text.trim() || loading}>
-                {loading ? "Adding…" : "Into the jar 🫙"}
+            <div style={{ position: "relative", marginBottom: 14 }}>
+              <textarea
+                ref={textRef}
+                style={s.textarea}
+                placeholder="e.g. Sunset picnic with homemade sandwiches…"
+                value={text}
+                onChange={e => setText(e.target.value)}
+                rows={4}
+              />
+              {notes.length >= 10 && (
+                <button
+                  onClick={generateIdea}
+                  disabled={generating || loading || !ai}
+                  title={!ai ? "Missing API Key" : "Generate a personalized idea using AI"}
+                  style={{
+                    position: "absolute",
+                    bottom: 14,
+                    right: 14,
+                    background: generating ? "var(--bg)" : "rgba(255,255,255,0.7)",
+                    border: "1px solid #e8d5c4",
+                    borderRadius: 20,
+                    padding: "4px 10px",
+                    fontSize: "0.75rem",
+                    fontFamily: "'DM Sans', sans-serif",
+                    color: generating ? "#999" : "var(--accent)",
+                    cursor: generating || !ai ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    backdropFilter: "blur(4px)",
+                    boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                    transition: "all 0.2s ease",
+                    opacity: (!ai || generating) ? 0.6 : 1
+                  }}
+                >
+                  {generating ? "⟳ drafting..." : "✨ Generate"}
+                </button>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={s.btn} onClick={addNote} disabled={!text.trim() || loading || generating}>
+                {(loading || generating) ? "Adding…" : "Into the jar 🫙"}
               </button>
               <button style={s.btnGhost} onClick={() => setView("jar")}>Back</button>
             </div>
