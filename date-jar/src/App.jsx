@@ -449,6 +449,7 @@ They have a "Date Jar" with these existing ideas:
 - ${existingIdeas || "No ideas yet!"}
 
 Based on the vibe of these ideas (or if none exist, just come up with something cute, romantic, and fun), suggest ONE new date idea.
+IMPORTANT: The generated idea MUST be in the exact same language as the existing ideas provided above. If there are no existing ideas, default to English.
 Keep it concise, romantic, and written as a single sentence or short paragraph. Do not use quotes or introductory text, just output the idea itself.`;
 
       const response = await ai.models.generateContent({
