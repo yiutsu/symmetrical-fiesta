@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { GoogleGenAI } from "@google/genai";
+import { MeshGradient } from "@paper-design/shaders-react";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -261,6 +262,7 @@ function WelcomeScreen({ onEnter }) {
   const [name, setName] = useState("");
   return (
     <div style={s.centeredPage} className="centered-page">
+      <MeshGradient speed={0.5} scale={0.85} distortion={0.8} swirl={0.07} colors={['#D8754B', '#F4A261', '#FDF7F0', '#FFDBCD']} style={s.bgShader} />
       <div style={s.card} className="dj-card">
         <div style={{ fontSize: "2.8rem", marginBottom: 10 }}>💌</div>
         <h1 style={s.displayTitle}>Date Jar</h1>
@@ -314,6 +316,7 @@ function JarLobby({ author, onJarReady }) {
 
   return (
     <div style={s.centeredPage} className="centered-page">
+      <MeshGradient speed={0.5} scale={0.85} distortion={0.8} swirl={0.07} colors={['#D8754B', '#F4A261', '#FDF7F0', '#FFDBCD']} style={s.bgShader} />
       <div style={s.card} className="dj-card">
         <div style={{ fontSize: "2rem", marginBottom: 8 }}>🫙</div>
         <h2 style={s.cardTitle}>Welcome, {author}</h2>
@@ -448,9 +451,9 @@ function MainApp({ author, jar, onLeave }) {
 They have a "Date Jar" with these existing ideas:
 - ${existingIdeas || "No ideas yet!"}
 
-Based on the vibe of these ideas (or if none exist, just come up with something cute, romantic, and fun), suggest ONE new date idea.
+Based on the vibe of these ideas, suggest ONE new date idea.
 IMPORTANT: The generated idea MUST be in the exact same language as the existing ideas provided above. If there are no existing ideas, default to English.
-Keep it concise, romantic, and written as a single sentence or short paragraph. Do not use quotes or introductory text, just output the idea itself.`;
+Keep it concise, romantic, and written as a single sentence. Do not use quotes or introductory text, just output the idea itself.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -661,6 +664,14 @@ const s = {
     justifyContent: "center",
     padding: 24,
     background: "var(--bg)",
+    position: "relative",
+    overflow: "hidden",
+  },
+  bgShader: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    width: "100%", height: "100%",
+    zIndex: 0,
   },
   appShell: {
     minHeight: "100vh",
@@ -720,6 +731,8 @@ const s = {
     boxSizing: "border-box",
     animation: "fadeIn 0.4s ease",
     textAlign: "center",
+    position: "relative",
+    zIndex: 1,
   },
   displayTitle: {
     fontFamily: "'Lora', serif",
